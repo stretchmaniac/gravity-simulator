@@ -9,13 +9,13 @@ m1 = sphere(pos=vector(0,0,0), radius=10**8/1000, color=color.blue, mass=2*10**3
 m1.vel = vector(0, 0, 0)
 
 m2 = sphere(pos=vector(10**8/75,0,0), radius = 10**8/1000, color=color.red, mass=6*10**24)
-m2.vel = vector(0,10**7, 10**6)
+m2.vel = vector(0,-10**7, -10**6)
 
 m3 = sphere(pos = vector(-10**8/75, 0,0), radius=10**8/1000, color=color.yellow, mass=6*10**24)
-m3.vel = vector(-5*10**6,-10**7, 2*10**6)
+m3.vel = vector(5*10**6,10**7, -2*10**6)
 
 m4 = sphere(pos = vector(-10**8/50, 0,0), radius=10**8/1000, color=color.green, mass=6*10**24)
-m4.vel = vector(0,-1*10**7, 2*10**5)
+m4.vel = vector(-0,1*10**7, -2*10**5)
 
 # for fun, we extend this to an arbitrary number of masses
 masses = [m1, m2, m3, m4]
@@ -103,75 +103,10 @@ while realTime < endTime:
     for m in masses:
         # calculate a as F_net / mass
         m.acc = m.fNet / m.mass
-
-        # now we have to update position and velocity.
-        # as it turns out (and as one can see), the order that position and velocity are updated in makes
-        # a difference. Specifically, if position is updated after velocity, then we notice a small
-        # but noticable lessening of the total energy of the system. Likewise, if position is updated
-        # before velocity, then we see a gradual increase in the total energy of the system
-
-        # so we need a better method of approximating the instantaneous change in position and velocity
-        # I propose the following method:
-        #   1. Let n = 1
-        #   2. Let a(t): R -> R^3 be a function of acceleration contructed by a piecewise linear
-        #      interpolation of n + 1 points from t = realTime to t = realTime + dt, with each control
-        #      point equal distance from the other control points (in time). Let a(t) be computed from
-        #      the best (so far) predicted path r(t), with r(t) = r_0 + v(t) t + 1/2 a_0 t^2 for
-        #      the special case of n = 1
-        #   3. Update r(t) as a linearly interpolated piecewise function, with each interval
-        #      interpolating acceleartion between a_0 and a_1, the endpoints of the interval
-        #   4. Increment n. Go to step 2 and repeat as necessary.
-
-        accEndPoints = [[m.acc, m.acc]]
-        (finalPos, finalVel) = (m.pos, m.vel)
-        posArray = [m.pos]
-        velArray = [m.vel]
-        for n in range(1,4):
-            # calculate the new posArray and velArray
-            subIntervalDt = dt / len(accEndPoints)
-            newPosArray = [m.pos]
-            newVelArray = [m.vel]
-            for i in range(len(accEndPoints)):
-                # general formula for linearly interpolated acceleration:
-                # a(t) = a1 t + a2 (1-t) = a1 t - a2 t + a2
-                # v(t) = .5 a1 t^2 - .5 a2 t^2 + a2 t + v0
-                # p(t) = 1/6 a1 t^3 - 1/6 a2 t^3 + 1/2 a2 t^2 + v0 t + p0
-                [a1, a2] = accEndPoints[i]
-                t = subIntervalDt
-                (v0, p0) = (velArray[i], posArray[i])
-                newP = (1.0/6.0)*a1*t**3 - (1.0/6.0)*a2*t**3 + v0*t + p0
-                newV = .5*a1*t**2 - .5*a2*t**2 + a2*t + v0
-                newPosArray.append(newP)
-                newVelArray.append(newV)
-            posArray = newPosArray
-            velArray = newVelArray
-
-            def posAt(t):
-                lowerIndex = math.floor(t / subIntervalDt)
-                prevPos = posArray[lowerIndex]
-                nextPos = posArray[lowerIndex + 1]
-                tResidual = t - lowerIndex*subIntervalDt
-                return prevPos*(tResidual / subIntervalDt) + nextPos*(1 - tResidual / subIntervalDt)
-
-            # now update accEndPoints to reflect new (calculated) acceleration values
-            # no need to calculate first one, since it's always the same
-            accList = [m.acc]
-            for t in [x * dt/(len(accEndPoints)+1) for x in range(0,len(accEndPoints) + 1)]:
-                accList.append(getAcceleration(m, posAt(t)))
-
-            print(len(accList))
-
-            accEndPoints = []
-            for i in range(len(accList) - 1):
-                accEndPoints.append([accList[i], accList[i+1]])
-
-            # finally update our position and velocity, which will be better and
-            # better approximations of reality
-            finalPos = posArray[-1]
-            finalVel = velArray[-1]
-
-        m.pos = finalPos
-        m.vel = finalVel
+        # update velocity
+        m.vel += m.acc * dt
+        # update position
+        m.pos += m.vel * dt
 
         # add the position to the trail
         m.trail.append(pos=m.pos)
