@@ -8,21 +8,15 @@ m1 = sphere(pos=vector(0,0,1), radius=10**8/1000, color=color.blue, mass=2*10**3
 # set an initial velocity
 m1.vel = vector(0, 0, 0)
 
-m2 = sphere(pos=vector(10**8/75,0,-2), radius = 10**8/1000, color=color.red, mass=6*10**24)
-m2.vel = vector(0,-10**7, -10**6)
-
-m3 = sphere(pos = vector(-10**8/75, 0,3), radius=10**8/1000, color=color.yellow, mass=6*10**24)
-m3.vel = vector(5*10**6,10**7, -2*10**6)
-
-m4 = sphere(pos = vector(-10**8/50, 0,-4), radius=10**8/1000, color=color.green, mass=6*10**24)
-m4.vel = vector(-0,1*10**7, -2*10**5)
+m2 = sphere(pos=vector(10**8/50,0,-2), radius = 10**8/1000, color=color.red, mass=6*10**24)
+m2.vel = vector(0,-1.0*10**7, -.5*10**6)
 
 # for fun, we extend this to an arbitrary number of masses
-masses = [m1, m2, m3,m4]
+masses = [m1, m2]
 for m in masses:
     # the trial is the line that marks the mass's path
     # to make it run faster, we restrict the trail length to a reasonable length
-    m.trail = curve(color=m.color, retain=5)
+    m.trail = curve(color=m.color, retain=5000)
     # keeps a log of the mass's position over time in a dictionary with keys time 't',
     # position 'pos', velocity 'vel', and acceleration 'acc'
     m.history = []
@@ -32,24 +26,31 @@ potentialEnergyHistory = []
 
 # delta time (seconds)
 # note that this is not necessarily constant
-baseDt = .01
+baseDt = .1
 # since dt changes, we want a baseline (baseDt)
 dt = baseDt
 
 # caps the maximum change in position by changing dt accordingly (see below)
 maxPStep = 10**6/10
 # caps the maximum change in velocity also
-maxVStep = 10**6/100
+maxVStep = 10**6/10
 
 # a clock that ticks upward, keeping track of real time
 realTime = 0
 # how many seconds the simulation runs for
-endTime = 10
+endTime = 30
 
 # the gravitational constant, G
 G = 6.67259*10**(-11)
 
 print('simulated time will be '+str(endTime)+' seconds.')
+
+def numericAcceleration(m):
+    fNet = vector(0,0,0)
+    for other in masses:
+        if m != other:
+            fNet += G * m.mass * other.mass / mag(m.bestApproxR - other.bestApproxR)**2 * norm(other.bestApproxR - m.bestApproxR)
+    return fNet / m.mass
 
 # this was changed from a for loop to a while loop to keep track of time instead of steps
 while realTime < endTime:
@@ -58,44 +59,36 @@ while realTime < endTime:
     # Thus this frame should take 10*dt seconds, so the rate is .1/dt
     rate(.5/dt)
 
-    # sum up the kinetic and potential energy as we do other things
-    PE = 0
+    for m in masses:
+        m.bestApproxR = m.pos
 
     for m in masses:
-        # initializing a net force vector with magnitude zero
-        m.fNet = vector(0,0,0)
+        tempA = numericAcceleration(m)
+        tempV = m.vel + tempA*dt
 
-    # iterates through all possible pairs of points once
-    for i in range(len(masses)):
-        for j in range(i+1, len(masses)):
-            # shorthand for two separate assignments
-            (m1, m2) = (masses[i], masses[j])
-            # Newton's law of gravity equates force to G m1 m2 / (r.r) r_hat
-            # we will first compute G m1 m2 / (r.r)
-            fMagnitude = G*m1.mass*m2.mass/dot(m1.pos-m2.pos, m1.pos-m2.pos)
-            # the norm returns a unit function, in this case r_hat
-            m1.fNet += fMagnitude * norm(m2.pos-m1.pos)
-            m2.fNet += fMagnitude * norm(m1.pos-m2.pos)
+        m.bestApproxA = tempA
+        m.bestApproxV = tempV
+        m.bestApproxR = m.pos + tempV*dt
+        m.acc = tempA
 
-            # the potential energy between two objects is given by -G m1 m2 / r
-            PE -= G*m1.mass*m2.mass/mag(m1.pos - m2.pos)
-
-    # update the potential energy history
-    potentialEnergyHistory.append(PE)
+    for iterations in range(10):
+        # use v(t + dt) ~ v(t) + dt (a(t) + a(t + dt)) / 2
+        #     r(t + dt) ~ r(t) + dt (v(t) + v(t + dt)) / 2
+        #     a(r + dt) ~ numericAcceleration(r(t + dt))
+        for m in masses:
+            m.bestApproxA = numericAcceleration(m)
+            m.bestApproxV = m.vel + dt * (m.acc + m.bestApproxA) / 2
+            m.bestApproxRTemp = m.pos + dt * (m.vel + m.bestApproxV) / 2
+        for m in masses:
+            m.bestApproxR = m.bestApproxRTemp
 
     # we see a breakdown of precision when v*dt or a*dt is sufficiently large. Thus we want to cap
     # dt so that v*dt < maxVStep and a*dt < maxAStep for all v and a
     maxVel = 0
     maxAcc = 0
     for m in masses:
-        # calculate a as F_net / mass
-        m.acc = m.fNet / m.mass
-
-        # we have dv/dt = a, so dv = a * dt
-        m.vel += m.acc * dt
-
-        # we have dp/dt = v, so dp = v * dt
-        m.pos += m.vel*dt
+        m.pos = m.bestApproxR
+        m.vel = m.bestApproxV
 
         # add the position to the trail
         m.trail.append(pos=m.pos)
@@ -113,6 +106,13 @@ while realTime < endTime:
             maxVel = mag(m.vel)
         if mag(m.acc) > maxAcc:
             maxAcc = mag(m.acc)
+
+    PE = 0
+    for i in range(len(masses)):
+        for j in range(i+1, len(masses)):
+            (m1, m2) = (masses[i], masses[j])
+            PE += -G * m1.mass * m2.mass / mag(m1.pos - m2.pos)
+    potentialEnergyHistory.append(PE)
 
     # reset dt to the baseline
     dt = baseDt
