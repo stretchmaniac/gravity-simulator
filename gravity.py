@@ -39,7 +39,7 @@ maxVStep = 10**6/1000
 # a clock that ticks upward, keeping track of real time
 realTime = 0
 # how many seconds the simulation runs for
-endTime = 30
+endTime = 10
 
 # the gravitational constant, G
 G = 6.67259*10**(-11)
@@ -183,3 +183,50 @@ if len(masses) > 0:
     plt.plot(ts, PEs)
     plt.plot(ts, totals)
     plt.show()
+
+# Kepler's 2nd law states that the area swept out over a set period of time is the same no matter what stage of orbit the body is in
+# we'll take 200 time increments and 2000 initial position combinations and test it
+
+# test everywhere from 0 to 1 complete orbit
+timeIntervals = [x/50 for x in range(1,200)]
+# and we'll use the positions at those times for convenience
+positions = [x for x in timeIntervals]
+
+movingMass = masses[1]
+
+
+def bezierIntegrate(tStart, tEnd, p1, deriv1, p2,deriv2,  control, origin):
+
+
+# generates helper data for the sweptArea function
+for i in range(1, len(movingMass.history) - 1):
+    [prevObj, obj, nextObj] = [movingMass.history[j] for j in [i-1,i,i+1]]
+    obj['sym_der'] = .5*(obj['pos'] - prevObj['pos']) / (obj['t'] - prevObj['t']) + .5*(nextObj['pos'] - obj['pos']) / (nextObj['t'] - obj['t'])
+
+# precalculate bezier areas as to not waste computation power later
+for i in range(1, len(movingMass.history) - 2):
+    [obj, nextObj] = [movingMass.history[j] for j in [i,i+1]]
+    # the control point is the intersection of 
+    controlPt =
+    obj['bezier_area_next'] = bezierIntegrate(0, 1, obj['pos'], obj['sym_der'], nextObj['pos'], nextObj['sym_der'], , masses[0].pos)
+
+# calculates area swept out over a time interval
+def sweptArea(tStart, tDelta):
+    # so the idea is to approximate the path inbetween paths with a quadratic bezier curve
+    # so that the derivative w.r.t. t is the average of the right and left (before and after)
+    # sided derivatives at each point (this is the sym_der calculated previously)
+
+    # first of all, some bezier math:
+    # given points a and b with control point c,
+    # the connecting bezier curve is given by
+    # b(t) = (1 - t)((1 - t)(a) + t(c)) + t((1 - t)(c) + t(b))
+    #
+
+# generate combinations of positions
+positionCombos = []
+for i in range(len(positions)):
+    for j in range(i + 1, len(positions)):
+        positionCombos.append((positions[i], positions[j]))
+
+for interval in timeIntervals:
+    for combo in positionCombos:
