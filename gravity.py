@@ -33,7 +33,7 @@ dt = baseDt
 # caps the maximum change in position by changing dt accordingly (see below)
 maxPStep = 10**6/10
 # caps the maximum change in velocity also
-maxVStep = 10**6/10
+maxVStep = 10**6/1000
 
 # a clock that ticks upward, keeping track of real time
 realTime = 0
