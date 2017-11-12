@@ -2,6 +2,11 @@
 from vpython import *
 import matplotlib.pyplot as plt
 import math
+from functools import reduce
+
+# Kepler's first law states that the planets follow an elliptical path around the sun, where the
+# the sun is one focus of the ellipse.
+# We model this as a massive object with zero initial velocity and a much less massive object orbiting it
 
 # initialize some test masses, roughly in proportion to the sun/earth system
 m1 = sphere(pos=vector(0,0,1), radius=10**8/1000, color=color.blue, mass=2*10**30)
@@ -34,12 +39,14 @@ dt = baseDt
 # caps the maximum change in position by changing dt accordingly (see below)
 maxPStep = 10**6/10
 # caps the maximum change in velocity also
-maxVStep = 10**6/1000
+# fyi, this is very high precision. This yeilds a total change in energy from beginning to end
+# of about .00000013%
+maxVStep = 10**6/10000
 
 # a clock that ticks upward, keeping track of real time
 realTime = 0
 # how many seconds the simulation runs for
-endTime = 30
+endTime = 10
 
 # the gravitational constant, G
 G = 6.67259*10**(-11)
@@ -94,7 +101,7 @@ while realTime < endTime:
         #     r(t + dt) ~ r(t) + dt (v(t) + v(t + dt)) / 2
         #     a(r + dt) ~ numericAcceleration(r(t + dt))
         # this is a cyclical set of relations that uses the average derivative at "now," which fails
-        # to account for curvature and "now + dt," which overaccounts for curvature
+        # to account for curvature and at "now + dt," which overaccounts for curvature
         for m in masses:
             # calculate the acceleration dt seconds from now using the best guess (future) positions of all the masses
             m.bestApproxA = numericAcceleration(m)
@@ -183,3 +190,74 @@ if len(masses) > 0:
     plt.plot(ts, PEs)
     plt.plot(ts, totals)
     plt.show()
+
+# we now need to check how elliptical the path was
+# we know that the sun is one focus (let's call it a point a). We seek another point b such that
+# |p - a| + |p - b| has the least varience for all points p in our data set
+# we will use a gradient descent style algorithm for simplicity
+
+def ellipseVariance(pts, focus1, focus2):
+    dists = [mag(x - focus1) + mag(x - focus2) for x in pts]
+    mean = 0
+    for d in dists:
+        mean += d
+    mean /= len(dists)
+
+    var = 0
+    for d in dists:
+        var += (d - mean)**2
+    return var
+
+focus1 = masses[0].pos
+focus2 = focus1
+points = [x['pos'] for x in masses[1].history][0:-1:1000]
+
+reasonableDist = mag(masses[0].pos - masses[1].pos)
+dx = reasonableDist / 1000000
+dy = dx
+dz = dx
+
+prevVars = [ellipseVariance(points, focus1, focus2) + 100 for i in range(10)]
+gradMultiplier = 1
+for i in range(5000):
+    print('minimizing '+str(i)+' out of 5000')
+    var = ellipseVariance(points, focus1, focus2)
+    dxVar = (ellipseVariance(points, focus1, focus2 + vector(dx, 0, 0)) - var) / dx
+    dyVar = (ellipseVariance(points, focus1, focus2 + vector(0, dy, 0)) - var) / dy
+    dzVar = (ellipseVariance(points, focus1, focus2 + vector(0, 0, dz)) - var) / dz
+    # follow the gradient
+    gradVec = -vector(dxVar, dyVar, dzVar)
+    if mag(gradVec) > reasonableDist / 1000:
+        gradVec *= reasonableDist / (1000 * mag(gradVec))
+
+    prevVarAve = 0
+    for j in prevVars:
+        prevVarAve += j
+    prevVarAve /= len(prevVars)
+
+    if var > prevVarAve:
+        gradMultiplier *= .75
+
+    if i > 500 and i % 100 == 0:
+        gradMultiplier *= .85
+
+    focus2 += gradMultiplier*gradVec
+
+    prevVar = var
+    print(var, focus2)
+
+variance = ellipseVariance(points, focus1, focus2)
+print('total variance:', var)
+print('variance per point: ', var / len(masses[0].history))
+print('focus position 1: ', focus1)
+print('focus position 2: ', focus2)
+print('number of points: ', len(points))
+
+# output:
+'''
+total variance: 14367798.033235407
+variance per point:  15.064185186014484
+focus position 1:  <15.228077, -292.574737, -13.628760>
+focus position 2:  <-4268656.238315, -54223.364443, -956.278581>
+number of points:  954
+'''
