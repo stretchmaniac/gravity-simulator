@@ -4,13 +4,13 @@ import matplotlib.pyplot as plt
 import math
 
 # initialize some test masses, roughly in proportion to the sun/earth system
-m1 = sphere(pos=vector(-10**8/100,0,0), radius=10**8/1000, color=color.blue, mass=6*10**21)
+m1 = sphere(pos=vector(0,0,1), radius=10**8/1000, color=color.blue, mass=2*10**30)
 # set an initial velocity
-m1.vel = vector(0, -10**8/400, 0)
+m1.vel = vector(0, 0, 0)
 
 # and a second sphere
-m2 = sphere(pos=vector(10**8/100,0,0), radius = 10**8/1000, color=color.yellow, mass=6*10**21)
-m2.vel = vector(0,10**8/400, 0)
+m2 = sphere(pos=vector(10**8/50,0,-2), radius = 10**8/1000, color=color.red, mass=6*10**24)
+m2.vel = vector(0,-1.0*10**7, -.5*10**6)
 
 # for fun, we extend this to an arbitrary number of masses
 masses = [m1, m2]
@@ -32,14 +32,14 @@ baseDt = .1
 dt = baseDt
 
 # caps the maximum change in position by changing dt accordingly (see below)
-maxPStep = 10**88/10
+maxPStep = 10**6/10
 # caps the maximum change in velocity also
-maxVStep = 10**8/100
+maxVStep = 10**6/1000
 
 # a clock that ticks upward, keeping track of real time
 realTime = 0
 # how many seconds the simulation runs for
-endTime = 30
+endTime = 10
 
 # the gravitational constant, G
 G = 6.67259*10**(-11)
@@ -55,8 +55,7 @@ def numericAcceleration(m):
         if m != other:
             # F = g m1 m2 / r**2 r_hat
             # note that this uses the property bestApproxR, which is explained farther down
-            # assignment #3 requires a simple inverse relationship
-            fNet += G * m.mass * other.mass / mag(m.bestApproxR - other.bestApproxR) * norm(other.bestApproxR - m.bestApproxR)
+            fNet += G * m.mass * other.mass / mag(m.bestApproxR - other.bestApproxR)**2 * norm(other.bestApproxR - m.bestApproxR)
     # a = f_net / m
     return fNet / m.mass
 
