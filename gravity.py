@@ -4,16 +4,16 @@ import matplotlib.pyplot as plt
 import math
 
 # initialize some test masses, roughly in proportion to the sun/earth system
-m2 = sphere(pos=vector(10**8/50,0,-2), radius = 10**8/1000, color=color.red, mass=6*10**24)
-# start from rest
-m2.vel = vector(0,0,0)
+m1 = sphere(pos=vector(-10**8/100,0,0), radius=10**8/1000, color=color.blue, mass=6*10**21)
+# set an initial velocity
+m1.vel = vector(0, -10**8/400, 0)
 
-m1 = sphere(pos=vector(-10**8/50,0,-2), radius = 10**8/1000, color=color.yellow, mass=8*10**24)
-m1.vel = vector(0,0,0)
+# and a second sphere
+m2 = sphere(pos=vector(10**8/100,0,0), radius = 10**8/1000, color=color.yellow, mass=6*10**21)
+m2.vel = vector(0,10**8/400, 0)
 
 # for fun, we extend this to an arbitrary number of masses
-# ... but we only need 1 mass for assignment #1
-masses = [m1,m2]
+masses = [m1, m2]
 for m in masses:
     # the trial is the line that marks the mass's path
     # to make it run faster, we restrict the trail length to a reasonable length
@@ -32,14 +32,14 @@ baseDt = .1
 dt = baseDt
 
 # caps the maximum change in position by changing dt accordingly (see below)
-maxPStep = 10**6/10
+maxPStep = 10**88/10
 # caps the maximum change in velocity also
-maxVStep = 10**6/1000
+maxVStep = 10**8/100
 
 # a clock that ticks upward, keeping track of real time
 realTime = 0
 # how many seconds the simulation runs for
-endTime = 10
+endTime = 30
 
 # the gravitational constant, G
 G = 6.67259*10**(-11)
@@ -48,9 +48,16 @@ print('simulated time will be '+str(endTime)+' seconds.')
 
 # calculates the acceleration due to the gravitational field of the other masses
 def numericAcceleration(m):
+    # sum of forces due to each mass
+    fNet = vector(0,0,0)
+    for other in masses:
+        # we don't want to compute the gravitational field due to itself!
+        if m != other:
+            # F = g m1 m2 / r**2 r_hat
+            # note that this uses the property bestApproxR, which is explained farther down
+            # assignment #3 requires a simple inverse relationship
+            fNet += G * m.mass * other.mass / mag(m.bestApproxR - other.bestApproxR) * norm(other.bestApproxR - m.bestApproxR)
     # a = f_net / m
-    # assignment #1 requires a constant force, so here's an arbitrary one
-    fNet = vector(0, 10**30, 0)
     return fNet / m.mass
 
 # this was changed from a for loop to a while loop to keep track of time instead of steps
@@ -83,8 +90,7 @@ while realTime < endTime:
         # the acceleration at this instant (before dt)
         m.acc = tempA
 
-    # no need to iterate with a constant force!
-    for iterations in range(0):
+    for iterations in range(10):
         # use v(t + dt) ~ v(t) + dt (a(t) + a(t + dt)) / 2
         #     r(t + dt) ~ r(t) + dt (v(t) + v(t + dt)) / 2
         #     a(r + dt) ~ numericAcceleration(r(t + dt))
