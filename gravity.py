@@ -8,9 +8,12 @@ m2 = sphere(pos=vector(10**8/50,0,-2), radius = 10**8/1000, color=color.red, mas
 # start from rest
 m2.vel = vector(0,0,0)
 
+m1 = sphere(pos=vector(-10**8/50,0,-2), radius = 10**8/1000, color=color.yellow, mass=8*10**24)
+m1.vel = vector(0,0,0)
+
 # for fun, we extend this to an arbitrary number of masses
 # ... but we only need 1 mass for assignment #1
-masses = [m2]
+masses = [m1,m2]
 for m in masses:
     # the trial is the line that marks the mass's path
     # to make it run faster, we restrict the trail length to a reasonable length
