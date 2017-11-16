@@ -2,6 +2,7 @@
 from vpython import *
 import matplotlib.pyplot as plt
 import math
+import numpy
 
 # initialize some test masses, roughly in proportion to the sun/earth system
 m1 = sphere(pos=vector(0,0,1), radius=10**8/1000, color=color.blue, mass=2*10**30)
@@ -185,48 +186,70 @@ if len(masses) > 0:
     plt.show()
 
 # Kepler's 2nd law states that the area swept out over a set period of time is the same no matter what stage of orbit the body is in
-# we'll take 200 time increments and 2000 initial position combinations and test it
-
-# test everywhere from 0 to 1 complete orbit
-timeIntervals = [x/50 for x in range(1,200)]
-# and we'll use the positions at those times for convenience
-positions = [x for x in timeIntervals]
+# you recall that I used a variable time-step, which means that I get some fun sub-triangle excitement ahead of me
 
 movingMass = masses[1]
 
+def vecToArr(vec):
+    return [vec.x, vec.y, vec.z]
 
-def bezierIntegrate(tStart, tEnd, p1, deriv1, p2,deriv2,  control, origin):
+def partialArea(histObj1, histObj2, origin, maxT):
+    (p1, p2) = (histObj1['pos'], histObj2['pos'])
+
+    partialArea = false
+    partialTriangleP2 = None
+    partialTravel = None
+    if histObj2['t'] > dt:
+        partialArea = true
+        percentTravel = (maxT - histObj1['t']) / (histObj2['t'] - histObj1['t'])
+        partialTriangleP2 = p1 * (1 - percentTravel) + percentTravel * p2
+
+    # calculate triangle area
+    triangleArea = 0
+    if partialArea:
+        partialArea = cross(p1, partialTriangleP2) / 2
+    else:
+        triangleArea = cross(p1, p2) / 2
+
+    # now compute the sector-ish area on the outside of the triangle (to see how much it makes a difference)
+    basis1 = (p2 - p1) / mag(p2 - p1)
+    radius = .5*(p1+p2) - origin
+    basis2 = cross(basis1, radius)
+    basis2 /= mag(basis2)
+    basis3 = cross(basis1, basis2)
+    # now to transform to standard, we apply the inverse of the linear tranformation given by the basis vectors above
+    transformation = numpy.column_stack(vecToArr(basis1), vecToArr(basis2), vecToArr(basis3))
+    inverseTransformation = numpy.linalg.inv(transformation)
+    def transform(vec):
+        return numpy.dot(transformation, numpy.column_stack(vecToArr(vec)))
+    normDeriv1 = transform(histObj1['sym_der'])
+    normDeriv2 = transform(histObj2['sym_der'])
+    normOffset = transform(p2 - p1)
+
+    # now we have a transformed basis, where p2 - p1 points in the positive x direction and the velocity
+    # vectors point in either the positive or negative y direction. Now we can drop the z component, effectively
+    # projecting the velocity vectors onto the plane formed by the origin and the 2 position pooints
+
+    # we model this as a quadratic function. Normally I would do a sector area, but that involves calculating the
+    # radius of a circle, which diverges as the vectors approach pointing the same direction. This (I think) would
+    # mean that this would be an unstable calculation.
+
+    aveDerivX = .5*(abs(normDeriv1[0]) + abs(normDeriv2[0]))
+    aveDerivY = .5*(abs(normDeriv1[1]) + abs(normDeriv2[1]))
+
+    # our quadratic function is given by y = (aveDerivY / (aveDerivX * |normOffset|)
+    # integrating from 0 to b, we arrive at (1/2)(dery/derx)b^2 - (1/3)(dery/(derx*|normOffset|))*b^3
+    # we can approximate b as |normOffset| * partialTravel, if we need to break up our triangle
+    b = math.sqrt(normOffset[0]**2 + normOffset[1]**2)
+    normOffset = b
+    if partialArea:
+        b *= partialTravel
+    quadraticArea = .5*(aveDerivY / aveDerivX)*b**2 - (1.0/3.0)*(aveDerivY /  (averDerivX * normOffset))*b**3
+
+    return triangleArea + quadraticArea
 
 
 # generates helper data for the sweptArea function
 for i in range(1, len(movingMass.history) - 1):
     [prevObj, obj, nextObj] = [movingMass.history[j] for j in [i-1,i,i+1]]
     obj['sym_der'] = .5*(obj['pos'] - prevObj['pos']) / (obj['t'] - prevObj['t']) + .5*(nextObj['pos'] - obj['pos']) / (nextObj['t'] - obj['t'])
-
-# precalculate bezier areas as to not waste computation power later
-for i in range(1, len(movingMass.history) - 2):
-    [obj, nextObj] = [movingMass.history[j] for j in [i,i+1]]
-    # the control point is the intersection of 
-    controlPt =
-    obj['bezier_area_next'] = bezierIntegrate(0, 1, obj['pos'], obj['sym_der'], nextObj['pos'], nextObj['sym_der'], , masses[0].pos)
-
-# calculates area swept out over a time interval
-def sweptArea(tStart, tDelta):
-    # so the idea is to approximate the path inbetween paths with a quadratic bezier curve
-    # so that the derivative w.r.t. t is the average of the right and left (before and after)
-    # sided derivatives at each point (this is the sym_der calculated previously)
-
-    # first of all, some bezier math:
-    # given points a and b with control point c,
-    # the connecting bezier curve is given by
-    # b(t) = (1 - t)((1 - t)(a) + t(c)) + t((1 - t)(c) + t(b))
-    #
-
-# generate combinations of positions
-positionCombos = []
-for i in range(len(positions)):
-    for j in range(i + 1, len(positions)):
-        positionCombos.append((positions[i], positions[j]))
-
-for interval in timeIntervals:
-    for combo in positionCombos:
