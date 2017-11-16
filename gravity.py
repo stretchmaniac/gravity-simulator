@@ -40,7 +40,7 @@ maxVStep = 10**6/1000
 # a clock that ticks upward, keeping track of real time
 realTime = 0
 # how many seconds the simulation runs for
-endTime = 10
+endTime = 20
 
 # the gravitational constant, G
 G = 6.67259*10**(-11)
@@ -65,7 +65,7 @@ while realTime < endTime:
     # we're hoping for this to run at real time.
     # Unfortunately this is a bit optimistic. We'll settle for a tenth time.
     # Thus this frame should take 10*dt seconds, so the rate is .1/dt
-    rate(.5/dt)
+    # rate(.5/dt)
 
     # we will use an iterative approach to better approximate the change in velocity and position
     for m in masses:
@@ -196,20 +196,20 @@ def vecToArr(vec):
 def partialArea(histObj1, histObj2, origin, maxT):
     (p1, p2) = (histObj1['pos'], histObj2['pos'])
 
-    partialArea = false
+    partialArea = False
     partialTriangleP2 = None
     partialTravel = None
-    if histObj2['t'] > dt:
-        partialArea = true
-        percentTravel = (maxT - histObj1['t']) / (histObj2['t'] - histObj1['t'])
-        partialTriangleP2 = p1 * (1 - percentTravel) + percentTravel * p2
+    if histObj2['t'] > maxT:
+        partialArea = True
+        partialTravel = (maxT - histObj1['t']) / (histObj2['t'] - histObj1['t'])
+        partialTriangleP2 = p1 * (1 - partialTravel) + partialTravel * p2
 
     # calculate triangle area
     triangleArea = 0
     if partialArea:
-        partialArea = cross(p1, partialTriangleP2) / 2
+        triangleArea = mag(cross(p1, partialTriangleP2)) / 2
     else:
-        triangleArea = cross(p1, p2) / 2
+        triangleArea = mag(cross(p1, p2)) / 2
 
     # now compute the sector-ish area on the outside of the triangle (to see how much it makes a difference)
     basis1 = (p2 - p1) / mag(p2 - p1)
@@ -218,16 +218,16 @@ def partialArea(histObj1, histObj2, origin, maxT):
     basis2 /= mag(basis2)
     basis3 = cross(basis1, basis2)
     # now to transform to standard, we apply the inverse of the linear tranformation given by the basis vectors above
-    transformation = numpy.column_stack(vecToArr(basis1), vecToArr(basis2), vecToArr(basis3))
+    transformation = numpy.column_stack([vecToArr(basis1), vecToArr(basis2), vecToArr(basis3)])
     inverseTransformation = numpy.linalg.inv(transformation)
     def transform(vec):
-        return numpy.dot(transformation, numpy.column_stack(vecToArr(vec)))
+        return [x[0] for x in numpy.dot(inverseTransformation, numpy.column_stack([vecToArr(vec)]))]
     normDeriv1 = transform(histObj1['sym_der'])
     normDeriv2 = transform(histObj2['sym_der'])
     normOffset = transform(p2 - p1)
 
     # now we have a transformed basis, where p2 - p1 points in the positive x direction and the velocity
-    # vectors point in either the positive or negative y direction. Now we can drop the z component, effectively
+    # vectors point in either the positive or negative z direction. Now we can drop the y component, effectively
     # projecting the velocity vectors onto the plane formed by the origin and the 2 position pooints
 
     # we model this as a quadratic function. Normally I would do a sector area, but that involves calculating the
@@ -235,7 +235,7 @@ def partialArea(histObj1, histObj2, origin, maxT):
     # mean that this would be an unstable calculation.
 
     aveDerivX = .5*(abs(normDeriv1[0]) + abs(normDeriv2[0]))
-    aveDerivY = .5*(abs(normDeriv1[1]) + abs(normDeriv2[1]))
+    aveDerivY = .5*(abs(normDeriv1[2]) + abs(normDeriv2[2]))
 
     # our quadratic function is given by y = (aveDerivY / (aveDerivX * |normOffset|)
     # integrating from 0 to b, we arrive at (1/2)(dery/derx)b^2 - (1/3)(dery/(derx*|normOffset|))*b^3
@@ -244,7 +244,7 @@ def partialArea(histObj1, histObj2, origin, maxT):
     normOffset = b
     if partialArea:
         b *= partialTravel
-    quadraticArea = .5*(aveDerivY / aveDerivX)*b**2 - (1.0/3.0)*(aveDerivY /  (averDerivX * normOffset))*b**3
+    quadraticArea = .5*(aveDerivY / aveDerivX)*b**2 - (1.0/3.0)*(aveDerivY /  (aveDerivX * normOffset))*b**3
 
     return triangleArea + quadraticArea
 
@@ -253,3 +253,29 @@ def partialArea(histObj1, histObj2, origin, maxT):
 for i in range(1, len(movingMass.history) - 1):
     [prevObj, obj, nextObj] = [movingMass.history[j] for j in [i-1,i,i+1]]
     obj['sym_der'] = .5*(obj['pos'] - prevObj['pos']) / (obj['t'] - prevObj['t']) + .5*(nextObj['pos'] - obj['pos']) / (nextObj['t'] - obj['t'])
+
+timeStep = baseDt
+areas = []
+# test a bunch of initial positions
+for i in range(1, len(movingMass.history) - 1, 10):
+    obj = movingMass.history[i]
+    startTime = obj['t']
+    endTime = startTime + timeStep
+    nextObjIndex = i + 1
+
+    nextObj = movingMass.history[nextObjIndex]
+    nextObjIndex += 1
+    area = 0
+    while nextObjIndex < len(movingMass.history) and obj['t'] < endTime:
+        # full triangles...
+        area += partialArea(obj, nextObj, masses[0].pos, endTime)
+        obj = nextObj
+        nextObj = movingMass.history[nextObjIndex]
+        nextObjIndex += 1
+
+    if(nextObjIndex < len(movingMass.history)):
+        print(area)
+        areas.append(area)
+
+plt.plot(areas)
+plt.show()
