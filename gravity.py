@@ -196,21 +196,27 @@ if len(masses) > 0:
 # we now need to check how elliptical the path was
 # we know that the sun is one focus (let's call it a point a). We seek another point b such that
 # |p - a| + |p - b| has the least varience for all points p in our data set
-# we will use a gradient descent style algorithm for simplicity
+# we will fit an ellipse to our dataset and use the ellipseVarience function (below)
+# to check our answer
 
 def ellipseVariance(pts, focus1, focus2):
+    # calculate |p - a| + |p - b| (the "string length," if you will, for an ellipse)
     dists = [mag(x - focus1) + mag(x - focus2) for x in pts]
+    # now find the mean of dists
     mean = 0
     for d in dists:
         mean += d
     mean /= len(dists)
 
+    # the definition of variance is the sum of the squares of the difference
+    # between the points and the mean of the points
     var = 0
     for d in dists:
         var += (d - mean)**2
     return var
 
 # found from http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
+# I currently do not know enough about eigenvalues to explain this -- ask me in a few months
 def fitEllipse(x,y):
     x = x[:,np.newaxis]
     y = y[:,np.newaxis]
@@ -223,6 +229,7 @@ def fitEllipse(x,y):
     a = V[:,n]
     return a
 
+# from the same source as fitEllipse
 def ellipse_center(a):
     b,c,d,f,g,a = a[1]/2, a[2], a[3]/2, a[4]/2, a[5], a[0]
     num = b*b-a*c
@@ -230,8 +237,9 @@ def ellipse_center(a):
     y0=(a*f-b*d)/num
     return np.array([x0,y0])
 
+# one focus of the ellipse, according to Kepler's first law, is the sun. In this case, it is the much more massive object
 focus1 = masses[0].pos
-focus2 = focus1
+# isolate the positions of the smaller mass. Note we don't care about the time component
 points = [x['pos'] for x in masses[1].history]
 
 # transform to xy basis. This means finding the best plane approximation
@@ -248,29 +256,44 @@ coeffs = np.dot(np.dot(inv(np.dot(np.transpose(X),X)), np.transpose(X)), Z)
 # and we can use cross product to find the last vector
 b1 = vector(b, c, -1)
 b1 /= mag(b1)
-# b2 and b3 lie in the plane
+# b2 and b3 lie in the plane, while b1 is normal
 b2 = vector(c, -b, 0)
 b2 /= mag(b2)
 b3 = cross(b1, b2)
 
+# turns a vpython vector into an array for use with numpy
 def toArr(vec):
     return [vec.x, vec.y, vec.z]
 
+# the transformation from the standard basis vectors to the orthonormal basis we
+# just computed is the new basis vectors as columns of a square matrix
 invTransformation = np.column_stack([toArr(b1), toArr(b2), toArr(b3)])
+# the inverse transformation is the inverse of the matrix representing the transformation
 transformation = inv(invTransformation)
 
-# transform all of our points
+# transform all of our points by multiplying transformation by the points as column vectors
 transformed = [np.transpose(np.dot(transformation, np.array([[p.x],[p.y],[p.z]])))[0] for p in points]
 
+# now get the y and z components of the transformed points (recall that b2 and b3 lie in the plane and b1 is normal),
+# and feed them into the fit ellipse method
 xyzs = np.column_stack(transformed)
 args = fitEllipse(xyzs[1], xyzs[2])
 rawCenter = ellipse_center(args)
 
-# transform back to normal coordinates
+# transform the center back to normal coordinates
+# the column vector, adding a zero component in the normal basis component of the plane
 v = np.array([[0], [rawCenter[0]], [rawCenter[1]]])
 ellipseCenter = [x[0] for x in np.dot(invTransformation, v)]
+# we have that the center of the ellipse lies exactly in between the two focii.
 ellipseFocusVec = vector(focus1.x + 2*(ellipseCenter[0]-focus1.x), focus1.y + 2*(ellipseCenter[1]-focus1.y), focus1.z + 2*(ellipseCenter[2] - focus1.z))
 print('focus: ',ellipseFocusVec)
+# now test how well we did
 var = ellipseVariance(points, focus1, ellipseFocusVec)
 print('total variance: ', var)
 print('variance per point: ', str(var/len(points)))
+
+'''output:
+focus:  <-4407254.059341, -116993.096146, 434876.954754>
+total variance:  1294569120.5121703
+variance per point:  13994.73666557306
+'''
