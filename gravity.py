@@ -1,6 +1,8 @@
 # I'm using vpython for python 3, which works a little differently from python 2
 from vpython import *
 import matplotlib.pyplot as plt
+import numpy as np
+from numpy.linalg import inv,eig
 import math
 from functools import reduce
 
@@ -14,7 +16,7 @@ m1 = sphere(pos=vector(0,0,1), radius=10**8/1000, color=color.blue, mass=2*10**3
 m1.vel = vector(0, 0, 0)
 
 # and a second sphere
-m2 = sphere(pos=vector(10**8/50,0,-2), radius = 10**8/1000, color=color.red, mass=6*10**24)
+m2 = sphere(pos=vector(10**8/50,0,-2*10**5), radius = 10**8/1000, color=color.red, mass=6*10**24)
 m2.vel = vector(0,-1.0*10**7, -.5*10**6)
 
 # for fun, we extend this to an arbitrary number of masses
@@ -41,7 +43,7 @@ maxPStep = 10**6/10
 # caps the maximum change in velocity also
 # fyi, this is very high precision. This yeilds a total change in energy from beginning to end
 # of about .00000013%
-maxVStep = 10**6/10000
+maxVStep = 10**6/1000
 
 # a clock that ticks upward, keeping track of real time
 realTime = 0
@@ -71,7 +73,7 @@ while realTime < endTime:
     # we're hoping for this to run at real time.
     # Unfortunately this is a bit optimistic. We'll settle for a tenth time.
     # Thus this frame should take 10*dt seconds, so the rate is .1/dt
-    rate(.5/dt)
+    #rate(.5/dt)
 
     # we will use an iterative approach to better approximate the change in velocity and position
     for m in masses:
@@ -208,56 +210,67 @@ def ellipseVariance(pts, focus1, focus2):
         var += (d - mean)**2
     return var
 
+# found from http://nicky.vanforeest.com/misc/fitEllipse/fitEllipse.html
+def fitEllipse(x,y):
+    x = x[:,np.newaxis]
+    y = y[:,np.newaxis]
+    D =  np.hstack((x*x, x*y, y*y, x, y, np.ones_like(x)))
+    S = np.dot(D.T,D)
+    C = np.zeros([6,6])
+    C[0,2] = C[2,0] = 2; C[1,1] = -1
+    E, V =  eig(np.dot(inv(S), C))
+    n = np.argmax(np.abs(E))
+    a = V[:,n]
+    return a
+
+def ellipse_center(a):
+    b,c,d,f,g,a = a[1]/2, a[2], a[3]/2, a[4]/2, a[5], a[0]
+    num = b*b-a*c
+    x0=(c*d-b*f)/num
+    y0=(a*f-b*d)/num
+    return np.array([x0,y0])
+
 focus1 = masses[0].pos
 focus2 = focus1
-points = [x['pos'] for x in masses[1].history][0:-1:1000]
+points = [x['pos'] for x in masses[1].history]
 
-reasonableDist = mag(masses[0].pos - masses[1].pos)
-dx = reasonableDist / 1000000
-dy = dx
-dz = dx
+# transform to xy basis. This means finding the best plane approximation
+# of the points and projecting the points onto the plane
+# We use a matrix formulation for a linear regression. Please ask me if you want a derivation!
+X = np.array([[1, p.x, p.y] for p in points])
+Z = np.array([[p.z] for p in points])
 
-prevVars = [ellipseVariance(points, focus1, focus2) + 100 for i in range(10)]
-gradMultiplier = 1
-for i in range(5000):
-    print('minimizing '+str(i)+' out of 5000')
-    var = ellipseVariance(points, focus1, focus2)
-    dxVar = (ellipseVariance(points, focus1, focus2 + vector(dx, 0, 0)) - var) / dx
-    dyVar = (ellipseVariance(points, focus1, focus2 + vector(0, dy, 0)) - var) / dy
-    dzVar = (ellipseVariance(points, focus1, focus2 + vector(0, 0, dz)) - var) / dz
-    # follow the gradient
-    gradVec = -vector(dxVar, dyVar, dzVar)
-    if mag(gradVec) > reasonableDist / 1000:
-        gradVec *= reasonableDist / (1000 * mag(gradVec))
+coeffs = np.dot(np.dot(inv(np.dot(np.transpose(X),X)), np.transpose(X)), Z)
+(a,b,c) = (coeffs[0][0], coeffs[1][0], coeffs[2][0])
 
-    prevVarAve = 0
-    for j in prevVars:
-        prevVarAve += j
-    prevVarAve /= len(prevVars)
+# now we need an orthonormal basis for the plane. We have that our plane
+# a + bx + cy = z has a normal vector (b,c,-1). We see that (c, -b, 0) is perpendicular to this
+# and we can use cross product to find the last vector
+b1 = vector(b, c, -1)
+b1 /= mag(b1)
+# b2 and b3 lie in the plane
+b2 = vector(c, -b, 0)
+b2 /= mag(b2)
+b3 = cross(b1, b2)
 
-    if var > prevVarAve:
-        gradMultiplier *= .75
+def toArr(vec):
+    return [vec.x, vec.y, vec.z]
 
-    if i > 500 and i % 100 == 0:
-        gradMultiplier *= .85
+invTransformation = np.column_stack([toArr(b1), toArr(b2), toArr(b3)])
+transformation = inv(invTransformation)
 
-    focus2 += gradMultiplier*gradVec
+# transform all of our points
+transformed = [np.transpose(np.dot(transformation, np.array([[p.x],[p.y],[p.z]])))[0] for p in points]
 
-    prevVar = var
-    print(var, focus2)
+xyzs = np.column_stack(transformed)
+args = fitEllipse(xyzs[1], xyzs[2])
+rawCenter = ellipse_center(args)
 
-variance = ellipseVariance(points, focus1, focus2)
-print('total variance:', var)
-print('variance per point: ', var / len(masses[0].history))
-print('focus position 1: ', focus1)
-print('focus position 2: ', focus2)
-print('number of points: ', len(points))
-
-# output:
-'''
-total variance: 14367798.033235407
-variance per point:  15.064185186014484
-focus position 1:  <15.228077, -292.574737, -13.628760>
-focus position 2:  <-4268656.238315, -54223.364443, -956.278581>
-number of points:  954
-'''
+# transform back to normal coordinates
+v = np.array([[0], [rawCenter[0]], [rawCenter[1]]])
+ellipseCenter = [x[0] for x in np.dot(invTransformation, v)]
+ellipseFocusVec = vector(focus1.x + 2*(ellipseCenter[0]-focus1.x), focus1.y + 2*(ellipseCenter[1]-focus1.y), focus1.z + 2*(ellipseCenter[2] - focus1.z))
+print('focus: ',ellipseFocusVec)
+var = ellipseVariance(points, focus1, ellipseFocusVec)
+print('total variance: ', var)
+print('variance per point: ', str(var/len(points)))
