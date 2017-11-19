@@ -35,7 +35,7 @@ dt = baseDt
 # caps the maximum change in position by changing dt accordingly (see below)
 maxPStep = 10**6/10
 # caps the maximum change in velocity also
-maxVStep = 10**6/1000
+maxVStep = 10**6/100
 
 # a clock that ticks upward, keeping track of real time
 realTime = 0
@@ -186,25 +186,38 @@ if len(masses) > 0:
     plt.show()
 
 # Kepler's 2nd law states that the area swept out over a set period of time is the same no matter what stage of orbit the body is in
-# you recall that I used a variable time-step, which means that I get some fun sub-triangle excitement ahead of me
+# you recall that I used a variable time-step, which means that I have some fun sub-triangle excitement ahead of me
 
+# the lighter mass was the 2nd one in the list
 movingMass = masses[1]
 
+# transforms a vpython vector to an array that can be used with numpy
 def vecToArr(vec):
     return [vec.x, vec.y, vec.z]
 
+# a function that gives the area of a triangle sector shape defined by a center
+# at origin, a point at histObj1, and a point at histObj2. Each history object
+# has a value of the derivative (symmetric velocity) and the time at which the mass
+# was at that position. If one of those times is less than maxT, then this function
+# calculates the partial area of the triangle shape
 def partialArea(histObj1, histObj2, origin, maxT):
     (p1, p2) = (histObj1['pos'], histObj2['pos'])
 
+    # determine if we should calculatee a partial area or not
     partialArea = False
+    # helpful info if we do need to calculate a partial area
     partialTriangleP2 = None
     partialTravel = None
+    # if our second point is too far in the future, calculate a partial area
     if histObj2['t'] > maxT:
         partialArea = True
+        # partialTravel gives a sense of how far from histObj1 maxT is (from 0 to 1)
         partialTravel = (maxT - histObj1['t']) / (histObj2['t'] - histObj1['t'])
+        # linearly interpolates a point between p1 and p2 based on the partialTravel
         partialTriangleP2 = p1 * (1 - partialTravel) + partialTravel * p2
 
-    # calculate triangle area
+    # calculate triangle area using the cross product. Recall that the cross product gives
+    # the area of the parallelogram defined by v1 and v2, thus we divide by two to get the triangle
     triangleArea = 0
     if partialArea:
         triangleArea = mag(cross(p1, partialTriangleP2)) / 2
@@ -212,12 +225,15 @@ def partialArea(histObj1, histObj2, origin, maxT):
         triangleArea = mag(cross(p1, p2)) / 2
 
     # now compute the sector-ish area on the outside of the triangle (to see how much it makes a difference)
+    # to do this, we need to transform our triangle shape to useful coordinates.
+    # we'll use the vector from p1 to p2 for one basis vector and go from there
     basis1 = (p2 - p1) / mag(p2 - p1)
     radius = .5*(p1+p2) - origin
     basis2 = cross(basis1, radius)
     basis2 /= mag(basis2)
     basis3 = cross(basis1, basis2)
-    # now to transform to standard, we apply the inverse of the linear tranformation given by the basis vectors above
+
+    # now to transform to standard basis, we apply the inverse of the linear tranformation given by the basis vectors above
     transformation = numpy.column_stack([vecToArr(basis1), vecToArr(basis2), vecToArr(basis3)])
     inverseTransformation = numpy.linalg.inv(transformation)
     def transform(vec):
@@ -249,32 +265,36 @@ def partialArea(histObj1, histObj2, origin, maxT):
     return triangleArea + quadraticArea
 
 
-# generates helper data for the sweptArea function
+# generates helper data for the partialArea function
 for i in range(1, len(movingMass.history) - 1):
     [prevObj, obj, nextObj] = [movingMass.history[j] for j in [i-1,i,i+1]]
+    # calculate the symmetric derivative (the average of the left and right derivatives)
     obj['sym_der'] = .5*(obj['pos'] - prevObj['pos']) / (obj['t'] - prevObj['t']) + .5*(nextObj['pos'] - obj['pos']) / (nextObj['t'] - obj['t'])
 
 timeStep = baseDt
 areas = []
-# test a bunch of initial positions
+# test a bunch of initial positions, sweeping out the area travelled in timeStep
 for i in range(1, len(movingMass.history) - 1, 10):
+    # this is the starting point of the swept area
     obj = movingMass.history[i]
     startTime = obj['t']
     endTime = startTime + timeStep
+    # keeps track of the next index past nextObj
     nextObjIndex = i + 1
 
     nextObj = movingMass.history[nextObjIndex]
     nextObjIndex += 1
     area = 0
+    # first condition so that we don't run out of elements in our list
     while nextObjIndex < len(movingMass.history) and obj['t'] < endTime:
-        # full triangles...
-        area += partialArea(obj, nextObj, masses[0].pos, endTime)
+        area += partialArea(obj, nextObj, masses[0].history[nextObjIndex-1]['pos'], endTime)
         obj = nextObj
         nextObj = movingMass.history[nextObjIndex]
         nextObjIndex += 1
 
+    # only use completed area segments
     if(nextObjIndex < len(movingMass.history)):
-        print(area)
+        print(i,len(movingMass.history),area)
         areas.append(area)
 
 plt.plot(areas)
